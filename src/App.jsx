@@ -30,7 +30,7 @@ const pcmToWav = (pcm16, sampleRate = 24000) => {
     // file length
     view.setUint32(4, 36 + pcm16.length * 2, true);
     // RIFF type 'WAVE'
-    writeString(view, 8, 'WAVE');
+    view.setUint32(8, 0x45564157, true); // 'WAVE'
     // format chunk identifier 'fmt '
     writeString(view, 12, 'fmt ');
     // format chunk length
@@ -75,6 +75,7 @@ const SECTIONS = [
     { id: 'about', title: 'Mission' },
     { id: 'colleges', title: 'Faculties' },
     { id: 'research', title: 'Research' },
+    { id: 'life', title: 'Student Life' }, // New Section
     { id: 'admissions', title: 'Apply' },
     { id: 'contact', title: 'Contact' },
 ];
@@ -89,9 +90,6 @@ const IconFlask = ({ className = "w-6 h-6" }) => (
 const IconUsers = ({ className = "w-6 h-6" }) => (
     <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5m-1.25-1.25a6.5 6.5 0 00-13 0M10 12a3 3 0 100-6 3 3 0 000 6zM5.25 19.75c0-3.5 1.75-6.5 4.75-8.5"></path></svg>
 );
-const IconGraduationCap = ({ className = "w-6 h-6" }) => (
-    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 14l9-5-9-5-9 5 9 5zm0 0v8m-5-4h10"></path></svg>
-);
 const IconChevronRight = ({ className = "w-4 h-4" }) => (
     <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"></path></svg>
 );
@@ -104,6 +102,14 @@ const IconSparkles = ({ className = "w-4 h-4" }) => (
 const IconVolume = ({ className = "w-4 h-4" }) => (
     <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" /><path d="M15.54 8.46a4.99 4.99 0 0 1 0 7.08" /></svg>
 );
+const IconShield = ({ className = "w-6 h-6" }) => (
+    // NEW LOGO ICON
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.636-1.636a9 9 0 11-12.728 0 9 9 0 0112.728 0z"></path></svg>
+);
+const IconCalendar = ({ className = "w-6 h-6" }) => (
+    <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>
+);
+
 
 // --- LLM Powered Component 1: AI Course Generator (with TTS) ---
 const AICourseGenerator = () => {
@@ -617,6 +623,188 @@ const AdmissionsQueryTool = () => {
     );
 };
 
+// --- LLM Powered Component 4: AI Student Event Planner (Structured Output) ---
+const StudentEventPlanner = () => {
+    const [eventType, setEventType] = useState('');
+    const [eventIdeas, setEventIdeas] = useState(null);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState(null);
+
+    const generateEvents = useCallback(async () => {
+        if (!eventType.trim()) {
+            setError("Please enter the type of event you need ideas for.");
+            return;
+        }
+
+        setLoading(true);
+        setEventIdeas(null);
+        setError(null);
+
+        const userQuery = `Generate three highly creative, unique, and culturally appropriate event concepts for East Hararghe University's student body based on the following event type: ${eventType}. Each concept must have a title, a theme description, and three suggested activities.`;
+
+        const systemPrompt = "You are a creative student union event coordinator. You must generate exactly three event concepts in JSON format designed to foster community, regional pride, and academic celebration.";
+
+        const apiKey = ""
+        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+
+        const payload = {
+            contents: [{ parts: [{ text: userQuery }] }],
+            systemInstruction: { parts: [{ text: systemPrompt }] },
+            generationConfig: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: "ARRAY",
+                    items: {
+                        type: "OBJECT",
+                        properties: {
+                            "title": { "type": "STRING", "description": "Catchy title for the event." },
+                            "theme": { "type": "STRING", "description": "A brief description of the event theme and its purpose." },
+                            "activities": { 
+                                "type": "ARRAY", 
+                                "items": { "type": "STRING" },
+                                "description": "Three unique suggested activities."
+                            }
+                        },
+                        required: ["title", "theme", "activities"]
+                    }
+                }
+            }
+        };
+
+        const MAX_RETRIES = 3;
+        let attempt = 0;
+        let success = false;
+
+        while (attempt < MAX_RETRIES && !success) {
+            try {
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    throw new Error(`API Error: ${response.statusText}`);
+                }
+
+                const result = await response.json();
+                const jsonText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+                
+                if (jsonText) {
+                    const parsedJson = JSON.parse(jsonText);
+                    setEventIdeas(parsedJson);
+                    success = true;
+                } else {
+                    throw new Error("Received empty or malformed JSON response from API.");
+                }
+
+            } catch (err) {
+                console.error(`Attempt ${attempt + 1} failed:`, err);
+                attempt++;
+                if (attempt < MAX_RETRIES) {
+                    const delay = Math.pow(2, attempt) * 1000;
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                } else {
+                    setError("Failed to generate event ideas after multiple retries.");
+                }
+            }
+        }
+
+        setLoading(false);
+
+    }, [eventType]);
+
+    return (
+        <div className="p-8 rounded-2xl shadow-2xl transition duration-300 transform hover:shadow-3xl border-2" style={{ backgroundColor: EHU_COLORS.WHITE, borderColor: EHU_COLORS.GREEN }}>
+            <div className="flex items-center mb-4">
+                <IconCalendar className="w-6 h-6 mr-2" style={{ color: EHU_COLORS.NAVY }} />
+                <h3 className="text-xl font-extrabold" style={{ color: EHU_COLORS.NAVY }}>AI Student Event Planner ✨</h3>
+            </div>
+            <p className="text-sm text-gray-700 mb-4">
+                Need fresh ideas? Enter an event type (e.g., 'Welcome Week', 'Career Fair') and get three creative concepts, complete with themes and activities.
+            </p>
+
+            <input
+                type="text"
+                placeholder="e.g., 'End of Semester Party' or 'Faculty Meet and Greet'"
+                value={eventType}
+                onChange={(e) => setEventType(e.target.value)}
+                className="w-full p-3 rounded-lg border-2 text-gray-800 focus:outline-none focus:border-green-500 mb-4"
+                style={{ borderColor: EHU_COLORS.NAVY + '40' }}
+                disabled={loading}
+            />
+
+            <button
+                onClick={generateEvents}
+                disabled={loading}
+                className={`w-full flex items-center justify-center space-x-2 py-3 px-6 rounded-full font-bold transition duration-300 ${loading ? 'bg-gray-400 cursor-not-allowed' : 'hover:bg-green-700'}`}
+                style={{ backgroundColor: EHU_COLORS.GREEN, color: EHU_COLORS.WHITE }}
+            >
+                {loading ? (
+                    <>
+                        <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                        <span>Planning...</span>
+                    </>
+                ) : (
+                    <>
+                        <IconSparkles className="w-4 h-4" />
+                        <span>Brainstorm 3 Event Ideas</span>
+                    </>
+                )}
+            </button>
+            
+            {(eventIdeas && eventIdeas.length > 0) && (
+                <div className="mt-6 space-y-6">
+                    <p className="font-bold mb-2 text-lg" style={{ color: EHU_COLORS.NAVY }}>Creative Event Concepts:</p>
+                    {eventIdeas.map((idea, index) => (
+                        <div key={index} className="p-4 rounded-xl shadow-md border-l-4" style={{ borderColor: EHU_COLORS.GOLD, backgroundColor: EHU_COLORS.LIGHT_BG }}>
+                            <h4 className="text-xl font-extrabold mb-1" style={{ color: EHU_COLORS.GREEN }}>{idea.title}</h4>
+                            <p className="text-sm italic text-gray-700 mb-3">{idea.theme}</p>
+                            <ul className="list-disc list-inside space-y-1 text-sm text-gray-800">
+                                {idea.activities.map((activity, aIndex) => (
+                                    <li key={aIndex} className="ml-2">{activity}</li>
+                                ))}
+                            </ul>
+                        </div>
+                    ))}
+                </div>
+            )}
+
+            {error && (
+                <div className="mt-6 p-4 rounded-xl border border-red-500 bg-red-50">
+                    <p className="font-bold text-red-700">Error:</p>
+                    <p className="text-sm text-red-600">{error}</p>
+                </div>
+            )}
+        </div>
+    );
+};
+
+// --- Student Life Section (New) ---
+const StudentLifeSection = () => (
+    <section id="life" className="py-20 md:py-32" style={{ backgroundColor: EHU_COLORS.LIGHT_BG }}>
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+            <h2 className="text-4xl font-bold text-center mb-4" style={{ color: EHU_COLORS.NAVY }}>
+                Campus & Student Life
+            </h2>
+            <p className="text-center text-xl text-gray-600 mb-16 max-w-3xl mx-auto">
+                Beyond academics, EHU offers a vibrant social and cultural environment. Use our AI tool to plan your next great event!
+            </p>
+
+            <div className="max-w-3xl mx-auto">
+                <StudentEventPlanner />
+            </div>
+            
+            <div className="mt-16 text-center">
+                <a href="#" className="inline-flex items-center font-bold text-lg hover:underline transition duration-200" style={{ color: EHU_COLORS.NAVY }}>
+                    View Student Union Activities <IconChevronRight className="ml-2 w-4 h-4" />
+                </a>
+            </div>
+        </div>
+    </section>
+);
+
+
 // --- Header Component (Sticky, Clean) ---
 const Header = () => {
     const [isOpen, setIsOpen] = useState(false);
@@ -627,9 +815,9 @@ const Header = () => {
         <header className="sticky top-0 z-50 bg-white shadow-lg">
             <div className="container mx-auto px-4 sm:px-6 lg:px-8">
                 <div className="flex items-center justify-between h-20">
-                    {/* Logo */}
+                    {/* Logo: Changed to IconShield */}
                     <a href="#hero" className="flex items-center space-x-2 transition duration-300 hover:opacity-90">
-                        <IconGraduationCap className="w-8 h-8" style={{ color: EHU_COLORS.GREEN }} />
+                        <IconShield className="w-8 h-8" style={{ color: EHU_COLORS.GREEN }} /> 
                         <span className="text-xl font-extrabold" style={{ color: EHU_COLORS.NAVY }}>EHU</span>
                         <span className="hidden sm:inline text-xl font-light tracking-wide" style={{ color: EHU_COLORS.NAVY }}>University</span>
                     </a>
@@ -746,7 +934,7 @@ const MissionVision = () => (
                 {/* Vision Card */}
                 <div className="p-8 rounded-2xl shadow-xl bg-white transition duration-500 hover:shadow-2xl border-l-8" style={{ borderColor: EHU_COLORS.GOLD }}>
                     <div className="flex items-center mb-4">
-                        <IconGraduationCap className="w-8 h-8 mr-3" style={{ color: EHU_COLORS.GOLD }}/>
+                        <IconShield className="w-8 h-8 mr-3" style={{ color: EHU_COLORS.GOLD }}/>
                         <h3 className="text-2xl font-extrabold" style={{ color: EHU_COLORS.NAVY }}>Our Vision</h3>
                     </div>
                     <p className="text-base text-gray-700 leading-relaxed italic">
@@ -818,7 +1006,7 @@ const CollegesSection = () => {
                             {selectedCollege.departments.map((dept, index) => (
                                 <div key={index} className="flex items-center space-x-3 p-3 rounded-lg bg-white shadow-sm">
                                     <span className="p-1 rounded-full text-white" style={{ backgroundColor: EHU_COLORS.GREEN }}>
-                                        <IconGraduationCap className="w-4 h-4" />
+                                        <IconShield className="w-4 h-4" />
                                     </span>
                                     <span className="font-medium text-gray-800">{dept}</span>
                                 </div>
@@ -867,7 +1055,7 @@ const ResearchSection = () => {
                     ))}
                 </div>
 
-                {/* Integration of the new LLM feature */}
+                {/* Integration of the LLM feature */}
                 <div className="mt-20 flex justify-center">
                     <div className="w-full max-w-4xl">
                         <AIResearchBrainstormer />
@@ -920,7 +1108,7 @@ const Footer = () => (
                         <li><a href="#colleges" className="text-gray-400 hover:text-white transition duration-300">Faculties & Colleges</a></li>
                         <li><a href="#research" className="text-gray-400 hover:text-white transition duration-300">Research Centers</a></li>
                         <li><a href="#" className="text-gray-400 hover:text-white transition duration-300">E-Learning Portal</a></li>
-                        <li><a href="#" className="text-gray-400 hover:text-white transition duration-300">Student Life</a></li>
+                        <li><a href="#life" className="text-gray-400 hover:text-white transition duration-300">Student Life</a></li>
                     </ul>
                 </div>
 
@@ -977,6 +1165,7 @@ const App = () => {
                 <MissionVision />
                 <CollegesSection />
                 <ResearchSection />
+                <StudentLifeSection />
                 <AdmissionsQuerySection />
             </main>
             <Footer />
